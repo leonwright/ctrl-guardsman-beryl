@@ -12,6 +12,7 @@ def load_config(file_path):
         logging.debug("Loading configuration file.")
         return yaml.safe_load(file)
 
+print("Loading configuration file.")
 config = load_config('/root/ctrl-guardsman-beryl/config.yml')
 
 # Set up logging
