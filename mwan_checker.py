@@ -75,11 +75,26 @@ async def toggle_plug(ip_address, plug_alias, turn_off):
     except Exception as e:
         print(f"Error connecting to the power strip at {ip_address}: {e}")
 
-async def power_cycle_plug(ip_address, plug_alias):
+def update_last_power_cycle_time(interface_name):
+    print(f"Updating last power cycle time for interface {interface_name}.")
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+    cursor.execute("UPDATE mwan3_status SET last_power_cycle_time = ? WHERE interface_name = ?",
+                   (now, interface_name))
+
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+
+async def power_cycle_plug(ip_address, plug_alias, interface_name):
     print(f"Power cycling plug {plug_alias} at {ip_address}")
     await toggle_plug(ip_address, plug_alias, turn_off=True)
     time.sleep(5)
     await toggle_plug(ip_address, plug_alias, turn_off=False)
+    update_last_power_cycle_time(interface_name)
 
 # Main routine
 async def main():
@@ -96,7 +111,7 @@ async def main():
                 continue
 
             print(f"Interface {interface_name} has been offline for more than five minutes. Power cycling plug {plug_alias}.")
-            await power_cycle_plug(config['smart_plug']['ip'], plug_alias)
+            await power_cycle_plug(config['smart_plug']['ip'], plug_alias, interface_name)
         else:
             print(f"Interface {interface_name} is online or no data available.")
 
