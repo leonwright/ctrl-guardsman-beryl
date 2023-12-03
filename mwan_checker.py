@@ -8,8 +8,8 @@ import time
 
 # Load configuration from YAML file
 def load_config(file_path):
+    print("Loading configuration file.")
     with open(file_path, 'r') as file:
-        print("Loading configuration file.")
         return yaml.safe_load(file)
 
 print("Loading configuration file.")
@@ -43,9 +43,22 @@ def check_interface_offline(interface_name):
     print(f"No last online time found for interface {interface_name}")
     return False
 
+def get_last_power_cycle_time(interface_name):
+    print(f"Fetching last power cycle time for interface {interface_name}.")
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT last_power_cycle_time FROM mwan3_status WHERE interface_name = ?", (interface_name,))
+    result = cursor.fetchone()
+    cursor.close()
+    connection.close()
+
+    if result and result[0]:
+        return datetime.datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S.%f')
+    return None
+
 async def toggle_plug(ip_address, plug_alias, turn_off):
     print(f"Toggling plug {plug_alias} at {ip_address}. Turn off: {turn_off}")
-    # Create a SmartStrip object with the specified IP address
     strip = SmartStrip(ip_address)
 
     try:
@@ -73,7 +86,15 @@ async def main():
     for interface in config['interfaces']:
         interface_name = interface['name']
         plug_alias = interface['smartplug_alias']
+
         if check_interface_offline(interface_name):
+            last_power_cycle_time = get_last_power_cycle_time(interface_name)
+            now = datetime.datetime.now()
+
+            if last_power_cycle_time and (now - last_power_cycle_time).total_seconds() < 1200:  # 1200 seconds = 20 minutes
+                print(f"Interface {interface_name} was power cycled less than 20 minutes ago. Skipping power cycle.")
+                continue
+
             print(f"Interface {interface_name} has been offline for more than five minutes. Power cycling plug {plug_alias}.")
             await power_cycle_plug(config['smart_plug']['ip'], plug_alias)
         else:
