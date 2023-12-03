@@ -32,34 +32,36 @@ def parse_interface_status():
 
 # Function to update database
 def update_database(interface_name, is_online):
-  connection = sqlite3.connect(db_path)
-  cursor = connection.cursor()
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
 
-  # Create the table if it doesn't exist
-  cursor.execute("CREATE TABLE IF NOT EXISTS mwan3_status ("
-           "interface_name TEXT PRIMARY KEY, "
-           "is_online INTEGER, "
-           "last_online_time TEXT, "
-           "last_checked_time TEXT)")
+    # Create the table if it doesn't exist
+    cursor.execute("CREATE TABLE IF NOT EXISTS mwan3_status ("
+                   "interface_name TEXT PRIMARY KEY, "
+                   "is_online INTEGER, "
+                   "last_online_time TEXT, "
+                   "last_checked_time TEXT)")
 
-  now = datetime.datetime.now()
-  cursor.execute("INSERT OR REPLACE INTO mwan3_status (interface_name, is_online, last_online_time, last_checked_time) "
-           "VALUES (?, ?, ?, ?)",
-           (interface_name, is_online, now if is_online else None, now))
+    now = datetime.datetime.now()
 
-  connection.commit()
-  cursor.close()
+    # Check the current last online time for the interface
+    cursor.execute("SELECT last_online_time FROM mwan3_status WHERE interface_name = ?", (interface_name,))
+    last_online_time = cursor.fetchone()
 
-  # Output a snapshot of the database
-  cursor = connection.cursor()
-  cursor.execute("SELECT * FROM mwan3_status")
-  snapshot = cursor.fetchall()
-  print("Database snapshot:")
-  for row in snapshot:
-    print(row)
+    if is_online:
+        # If the interface is online, update all fields
+        cursor.execute("INSERT OR REPLACE INTO mwan3_status (interface_name, is_online, last_online_time, last_checked_time) "
+                       "VALUES (?, ?, ?, ?)",
+                       (interface_name, is_online, now, now))
+    else:
+        # If the interface is offline, keep the last online time unchanged
+        cursor.execute("INSERT OR REPLACE INTO mwan3_status (interface_name, is_online, last_online_time, last_checked_time) "
+                       "VALUES (?, ?, ?, ?)",
+                       (interface_name, is_online, last_online_time[0] if last_online_time else None, now))
 
-  connection.close()
-
+    connection.commit()
+    cursor.close()
+    connection.close()
 
 # Parse interface status
 interface_statuses = parse_interface_status()
@@ -67,5 +69,19 @@ interface_statuses = parse_interface_status()
 # Update database for each interface
 for interface, status in interface_statuses.items():
     update_database(interface, status)
+
+# Output a snapshot of the database
+def print_database_snapshot():
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+    cursor.execute("SELECT * FROM mwan3_status")
+    snapshot = cursor.fetchall()
+    print("Database snapshot:")
+    for row in snapshot:
+        print(row)
+    cursor.close()
+    connection.close()
+
+print_database_snapshot()
 
 print("Database updated successfully.")
