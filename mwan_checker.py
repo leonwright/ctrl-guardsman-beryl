@@ -2,6 +2,9 @@ import sqlite3
 import datetime
 import logging
 import yaml
+import asyncio
+from kasa import SmartStrip
+import time
 
 # Load configuration from YAML file
 def load_config(file_path):
@@ -11,10 +14,10 @@ def load_config(file_path):
 config = load_config('/root/ctrl-guardsman-beryl/config.yml')
 
 # Set up logging
-logging.basicConfig(level=logging.DEBUG)  # Set the logging level to DEBUG for extensive logs
+logging.basicConfig(level=logging.DEBUG)
 
 # Database configuration
-db_path = config['sqlite']['mwan3_path']  # Update this with the path to your SQLite database
+db_path = config['sqlite']['mwan3_path']
 
 # Function to check if an interface has been offline for more than five minutes
 def check_interface_offline(interface_name):
@@ -23,23 +26,52 @@ def check_interface_offline(interface_name):
 
     # Retrieve the last online time for the interface
     cursor.execute("SELECT last_online_time FROM mwan3_status WHERE interface_name = ?", (interface_name,))
-    last_online_time = cursor.fetchone()[0]
-
-    if last_online_time:
-        last_online_time = datetime.datetime.strptime(last_online_time, '%Y-%m-%d %H:%M:%S.%f')
-        now = datetime.datetime.now()
-        offline_duration = now - last_online_time
-
-        if offline_duration.total_seconds() > 300:  # Five minutes in seconds
-            logging.debug(f"Interface {interface_name} has been offline for more than five minutes.")
-        else:
-            logging.debug(f"Interface {interface_name} is online.")
-
+    result = cursor.fetchone()
     cursor.close()
     connection.close()
 
-# Specify the interface name you want to check
-interface_name = 'WAN40'  # Update this with the interface name you want to check
+    if result and result[0]:
+        last_online_time = datetime.datetime.strptime(result[0], '%Y-%m-%d %H:%M:%S.%f')
+        now = datetime.datetime.now()
+        offline_duration = now - last_online_time
+        return offline_duration.total_seconds() > 300  # Five minutes in seconds
+    return False
 
-# Call the function to check the interface status
-check_interface_offline(interface_name)
+async def toggle_plug(ip_address, plug_alias, turn_off):
+    # Create a SmartStrip object with the specified IP address
+    strip = SmartStrip(ip_address)
+
+    try:
+        # Request the latest status
+        await strip.update()
+
+        # Find the plug by alias
+        for plug in strip.children:
+            if plug.alias == plug_alias:
+                if turn_off:
+                    await plug.turn_off()
+                    logging.debug(f" - Plug '{plug_alias}' turned OFF.")
+                else:
+                    await plug.turn_on()
+                    logging.debug(f" - Plug '{plug_alias}' turned ON.")
+                return
+    except Exception as e:
+        logging.error(f"Error connecting to the power strip at {ip_address}: {e}")
+
+async def power_cycle_plug(ip_address, plug_alias):
+    # Turn off the plug and then turn it on
+    await toggle_plug(ip_address, plug_alias, turn_off=True)
+    time.sleep(5)  # Wait for 5 seconds
+    await toggle_plug(ip_address, plug_alias, turn_off=False)
+
+# Main routine
+async def main():
+    for interface in config['interfaces']:
+        interface_name = interface['name']
+        plug_alias = interface['smartplug_alias']
+        if check_interface_offline(interface_name):
+            logging.info(f"Interface {interface_name} has been offline for more than five minutes. Power cycling plug {plug_alias}.")
+            await power_cycle_plug(config['smart_plug']['ip'], plug_alias)
+
+if __name__ == "__main__":
+    asyncio.run(main())
