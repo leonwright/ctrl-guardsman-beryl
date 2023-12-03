@@ -32,17 +32,24 @@ def parse_interface_status():
 
 # Function to update database
 def update_database(interface_name, is_online):
-    connection = sqlite3.connect(db_path)
-    cursor = connection.cursor()
+  connection = sqlite3.connect(db_path)
+  cursor = connection.cursor()
 
-    now = datetime.datetime.now()
-    cursor.execute("INSERT OR REPLACE INTO mwan3_status (interface_name, is_online, last_online_time, last_checked_time) "
-                   "VALUES (?, ?, ?, ?)",
-                   (interface_name, is_online, now if is_online else None, now))
+  # Create the table if it doesn't exist
+  cursor.execute("CREATE TABLE IF NOT EXISTS mwan3_status ("
+           "interface_name TEXT PRIMARY KEY, "
+           "is_online INTEGER, "
+           "last_online_time TEXT, "
+           "last_checked_time TEXT)")
 
-    connection.commit()
-    cursor.close()
-    connection.close()
+  now = datetime.datetime.now()
+  cursor.execute("INSERT OR REPLACE INTO mwan3_status (interface_name, is_online, last_online_time, last_checked_time) "
+           "VALUES (?, ?, ?, ?)",
+           (interface_name, is_online, now if is_online else None, now))
+
+  connection.commit()
+  cursor.close()
+  connection.close()
 
 # Parse interface status
 interface_statuses = parse_interface_status()
