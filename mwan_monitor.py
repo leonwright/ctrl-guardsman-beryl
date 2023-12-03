@@ -49,7 +49,17 @@ def update_database(interface_name, is_online):
 
   connection.commit()
   cursor.close()
+
+  # Output a snapshot of the database
+  cursor = connection.cursor()
+  cursor.execute("SELECT * FROM mwan3_status")
+  snapshot = cursor.fetchall()
+  print("Database snapshot:")
+  for row in snapshot:
+    print(row)
+
   connection.close()
+
 
 # Parse interface status
 interface_statuses = parse_interface_status()

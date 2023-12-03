@@ -1,32 +1,45 @@
-import mwan3
-import json
+import sqlite3
+import datetime
+import logging
+import yaml
 
-def main():
-  # Example usage:
-  w = mwan3.Mwan3Wrapper()
+# Load configuration from YAML file
+def load_config(file_path):
+    with open(file_path, 'r') as file:
+        return yaml.safe_load(file)
 
-  status = json.loads("{'interfaces': {'interface wan': {'online_status': 'offline and tracking', 'time_online': 'down', 'uptime': '', 'tracking_status': ''}, 'interface wwan': {'online_status': 'offline and tracking', 'time_online': 'down', 'uptime': '', 'tracking_status': ''}, 'interface tethering': {'online_status': 'offline and tracking', 'time_online': 'down', 'uptime': '', 'tracking_status': ''}, 'interface wan6': {'online_status': 'offline and tracking', 'time_online': 'down', 'uptime': '', 'tracking_status': ''}, 'interface wwan6': {'online_status': 'offline and tracking', 'time_online': 'down', 'uptime': '', 'tracking_status': ''}, 'interface tethering6': {'online_status': 'offline and tracking', 'time_online': 'down', 'uptime': '', 'tracking_status': ''}, 'interface WAN10': {'online_status': 'online 133h:45m:11s', 'time_online': 'uptime 136h:16m:52s and tracking', 'uptime': 'active', 'tracking_status': ''}, 'interface WAN20': {'online_status': 'online 07h:04m:13s', 'time_online': 'uptime 100h:16m:44s and tracking', 'uptime': 'active', 'tracking_status': ''}, 'interface WAN30': {'online_status': 'online 02h:11m:26s', 'time_online': 'uptime 136h:16m:44s and tracking', 'uptime': 'active', 'tracking_status': ''}, 'interface WAN40': {'online_status': 'online 03h:02m:35s', 'time_online': 'uptime 136h:16m:48s and tracking', 'uptime': 'active', 'tracking_status': ''\}\}")
-  extract_interface_status(status, 'WAN10')
-  extract_interface_status(status, 'WAN20')
-  extract_interface_status(status, 'WAN30')
-  extract_interface_status(status, 'WAN40')
-  print(status)
+config = load_config('/root/ctrl-guardsman-beryl/config.yml')
 
-def extract_interface_status(json_data, interface_name):
-  interface_info = json_data.get('interfaces', {})
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)  # Set the logging level to DEBUG for extensive logs
 
-  # Extracting the interface name and online status
-  for name, details in interface_info.items():
-    # Cleaning up the interface name
-    cleaned_name = name.replace('interface ', '').upper()
+# Database configuration
+db_path = config['sqlite']['mwan3_path']  # Update this with the path to your SQLite database
 
-    if cleaned_name == interface_name:
-      # Determining the online status
-      online_status = details.get('online_status')
-      status = 'online' if 'online' in online_status else 'offline'
-      return status
+# Function to check if an interface has been offline for more than five minutes
+def check_interface_offline(interface_name):
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
 
-  return 'unknown'
+    # Retrieve the last online time for the interface
+    cursor.execute("SELECT last_online_time FROM mwan3_status WHERE interface_name = ?", (interface_name,))
+    last_online_time = cursor.fetchone()[0]
 
-if __name__ == "__main__":
-  main()
+    if last_online_time:
+        last_online_time = datetime.datetime.strptime(last_online_time, '%Y-%m-%d %H:%M:%S.%f')
+        now = datetime.datetime.now()
+        offline_duration = now - last_online_time
+
+        if offline_duration.total_seconds() > 300:  # Five minutes in seconds
+            logging.debug(f"Interface {interface_name} has been offline for more than five minutes.")
+        else:
+            logging.debug(f"Interface {interface_name} is online.")
+
+    cursor.close()
+    connection.close()
+
+# Specify the interface name you want to check
+interface_name = 'WAN40'  # Update this with the interface name you want to check
+
+# Call the function to check the interface status
+check_interface_offline(interface_name)
