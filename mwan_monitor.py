@@ -15,7 +15,7 @@ config = load_config('/root/ctrl-guardsman-beryl/config.yml')
 logging.basicConfig(level=logging.INFO)
 
 # Database configuration
-db_path = config['sqlite']['mwan3_path']  # Update this with the path to your SQLite database
+db_path = config['sqlite']['mwan3_path']
 
 # Function to parse interface status
 def parse_interface_status():
@@ -35,29 +35,29 @@ def update_database(interface_name, is_online):
     connection = sqlite3.connect(db_path)
     cursor = connection.cursor()
 
-    # Create the table if it doesn't exist
+    # Create or update the table structure
     cursor.execute("CREATE TABLE IF NOT EXISTS mwan3_status ("
                    "interface_name TEXT PRIMARY KEY, "
                    "is_online INTEGER, "
                    "last_online_time TEXT, "
-                   "last_checked_time TEXT)")
+                   "last_checked_time TEXT, "
+                   "last_power_cycle_time TEXT)")
 
     now = datetime.datetime.now()
 
-    # Check the current last online time for the interface
-    cursor.execute("SELECT last_online_time FROM mwan3_status WHERE interface_name = ?", (interface_name,))
-    last_online_time = cursor.fetchone()
+    cursor.execute("SELECT last_online_time, last_power_cycle_time FROM mwan3_status WHERE interface_name = ?", (interface_name,))
+    record = cursor.fetchone()
+    last_online_time = record[0] if record else None
+    last_power_cycle_time = record[1] if record else None
 
     if is_online:
-        # If the interface is online, update all fields
-        cursor.execute("INSERT OR REPLACE INTO mwan3_status (interface_name, is_online, last_online_time, last_checked_time) "
-                       "VALUES (?, ?, ?, ?)",
-                       (interface_name, is_online, now, now))
+        cursor.execute("INSERT OR REPLACE INTO mwan3_status (interface_name, is_online, last_online_time, last_checked_time, last_power_cycle_time) "
+                       "VALUES (?, ?, ?, ?, ?)",
+                       (interface_name, is_online, now, now, last_power_cycle_time))
     else:
-        # If the interface is offline, keep the last online time unchanged
-        cursor.execute("INSERT OR REPLACE INTO mwan3_status (interface_name, is_online, last_online_time, last_checked_time) "
-                       "VALUES (?, ?, ?, ?)",
-                       (interface_name, is_online, last_online_time[0] if last_online_time else None, now))
+        cursor.execute("INSERT OR REPLACE INTO mwan3_status (interface_name, is_online, last_online_time, last_checked_time, last_power_cycle_time) "
+                       "VALUES (?, ?, ?, ?, ?)",
+                       (interface_name, is_online, last_online_time, now, last_power_cycle_time))
 
     connection.commit()
     cursor.close()
